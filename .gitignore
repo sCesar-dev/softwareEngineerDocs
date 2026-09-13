@@ -63,3 +63,5 @@ venv.bak/
 # Logs
 logs/
 *.log
+
+.~lock.*
