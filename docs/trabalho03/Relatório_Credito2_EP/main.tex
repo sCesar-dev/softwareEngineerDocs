@@ -1,0 +1,144 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[portuguese]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{listings}
+
+\geometry{left=2.5cm, right=2.5cm, top=3cm, bottom=3cm}
+
+% --- Configuração para exibição de código Python ---
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen}\bfseries,
+    keywordstyle=\color{blue},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=4
+}
+\lstset{style=mystyle}
+
+% --- Identificação da Equipe ---
+\title{\textbf{Relatório Técnico - Crédito 2}\\ \Large{Implementação do FCM e Obtenção Empírica da Função Tempo}}
+\author{
+    \textbf{Equipe XX} - [Nome da sua Restrição Arquitetural] \\
+    Membro 1: [Nome Completo e Matrícula] \\
+    Membro 2: [Nome Completo e Matrícula] \\
+    \textit{Universidade do Estado da Bahia (UNEB) - DCET I}
+}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introdução e Escopo}
+Este documento apresenta os resultados do Crédito 2 da disciplina de Engenharia de Programas. O objetivo é descrever a implementação desenvolvida \textit{from scratch} do algoritmo \textbf{Fuzzy C-Means (FCM)}, respeitando rigorosamente a restrição arquitetural sorteada pela equipe, e apresentar o levantamento do Tempo Empírico ($T_{exp}$) em função do número de pixels ($n$) e clusters ($K$).
+
+\section{Análise da Restrição Arquitetural}
+\textbf{Restrição Sorteada:} [INSERIR NOME DA RESTRIÇÃO, ex: Missão "Fuga da FPU" (Fixed-Point Math)]
+
+% INSTRUÇÃO AOS ALUNOS:
+% Expliquem detalhadamente COMO vocês lidaram com a restrição arquitetural no código. 
+% Quais foram os desafios técnicos de hardware impostos por ela?
+% Como converteram a lógica nativa do FCM para obedecer à regra? 
+% Exemplo: Se for Fixed-Point, expliquem a escala usada e os bitwise shifts aplicados. 
+% Se for Loop Unrolling, expliquem como desenrolaram e lidaram com o "resto" da divisão do laço.
+[Escreva aqui a fundamentação teórica de como a restrição foi superada do ponto de vista de Engenharia de Software e Microarquitetura...]
+
+\section{Implementação do Núcleo FCM}
+O código fonte completo, contendo os scripts de validação e a implementação integral, encontra-se versionado no seguinte repositório público: \\
+\textbf{Link do Repositório:} \href{https://github.com/sua-equipe/projeto-foca}{[INSERIR URL DO GITHUB AQUI]}
+
+Abaixo, destaca-se o \textit{snippet} do laço principal do algoritmo, onde a restrição arquitetural atua sobre as primitivas de processamento e acesso à memória na fase de associação (cálculo das distâncias e atualização da matriz de pertinência).
+
+% INSTRUÇÃO AOS ALUNOS:
+% Colem abaixo APENAS o coração computacional do algoritmo (os laços for iterativos e o cálculo interno de pertinência/distância).
+\begin{lstlisting}[language=Python, caption=Núcleo computacional do FCM adaptado à restrição.]
+# [INSERIR O CÓDIGO FONTE AQUI]
+# Exemplo genérico estrutural:
+for i in range(N):
+    for j in range(K):
+        # Implementação autoral da equipe respeitando a restrição
+        pass 
+\end{lstlisting}
+
+\section{Metodologia Experimental e Estabilidade}
+As medições empíricas foram executadas utilizando o script \texttt{experimentador.py}. Para atestar a confiabilidade do hardware e minimizar os ruídos do Sistema Operacional, foram realizadas $R = 30$ repetições para cada combinação de $(n, K)$. 
+
+A Tabela \ref{tab:estabilidade} comprova o rigor estatístico da bancada, garantindo que o Coeficiente de Variação (CV) permaneceu dentro da zona de aceitação ($CV < 0.15$).
+
+% INSTRUÇÃO AOS ALUNOS:
+% Preencham a tabela abaixo resumindo as saídas do Pandas DataFrame gerado pelo seu script.
+\begin{table}[h!]
+\centering
+\caption{Validação de Estabilidade Empírica (Amostra Resumida)}
+\label{tab:estabilidade}
+\begin{tabular}{@{}ccccc@{}}
+\toprule
+\textbf{Tamanho da Imagem ($n$)} & \textbf{Clusters ($K$)} & \textbf{Tempo Médio ($s$)} & \textbf{Desvio Padrão} & \textbf{CV} \\ \midrule
+$100 \times 100$ (10000) & 2 & [0.000] & [0.000] & [< 0.15] \\
+$100 \times 100$ (10000) & 3 & [0.000] & [0.000] & [< 0.15] \\
+... & ... & ... & ... & ... \\
+$500 \times 500$ (250000) & 4 & [0.000] & [0.000] & [< 0.15] \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\section{Resultados Empíricos ($T_{exp}$)}
+
+A partir da filtragem de estabilidade, o algoritmo de \textit{curve fitting} calibrou a função empírica do sistema. A equação polinomial identificada pela bancada real de testes foi:
+
+% INSTRUÇÃO AOS ALUNOS:
+% Colem aqui a equação gerada no terminal pela função exibir_equacao_ajustada().
+\begin{equation}
+    T_{exp}(n, K) = (\alpha) \cdot nK + (\beta) \cdot n + (\gamma) \cdot K + (\delta)
+\end{equation}
+
+Para validação visual, as Figuras \ref{fig:2d} e \ref{fig:3d} apresentam, respectivamente, os cortes bidimensionais e a superfície de resposta tridimensional projetada sobre as aferições reais (pontos de amostragem).
+
+% INSTRUÇÃO AOS ALUNOS:
+% Certifiquem-se de que a imagem 'relatorio_complexidade.png' está na mesma pasta do arquivo .tex principal.
+\begin{figure}[h!]
+    \centering
+    % \includegraphics[width=1\textwidth]{relatorio_complexidade.png}
+    \vspace{4cm} % Remover esta linha e descomentar a linha de cima ao inserir a imagem real
+    \caption{Tempo empírico segmentado: $T \times n$ (esquerda) e $T \times K$ (direita).}
+    \label{fig:2d}
+\end{figure}
+
+% INSTRUÇÃO AOS ALUNOS:
+% Certifiquem-se de que a imagem 'superficie_3d_foca.png' está na mesma pasta.
+\begin{figure}[h!]
+    \centering
+    % \includegraphics[width=0.8\textwidth]{superficie_3d_foca.png}
+    \vspace{5cm} % Remover esta linha e descomentar a linha de cima ao inserir a imagem real
+    \caption{Superfície de Tempo 3D sobreposta aos pontos de calibração empírica.}
+    \label{fig:3d}
+\end{figure}
+
+\section{Conclusão Parcial}
+Os dados atestam que a implementação adaptada do algoritmo FCM possui complexidade de ordem $\mathcal{O}(nK)$, com os gargalos microarquiteturais refletidos primariamente no coeficiente dominante $\alpha$ da medição. Este modelo empírico servirá como base absoluta (\textit{ground truth}) para o confronto teórico exigido no Crédito 3 utilizando a contagem F.O.C.A.
+
+\end{document}
