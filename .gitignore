@@ -63,3 +63,12 @@ venv.bak/
 # Logs
 logs/
 *.log
+
+# Lock and process files
+*.pid
+*.lock
+.~lock.*
+
+
+# Agents
+.agents/
