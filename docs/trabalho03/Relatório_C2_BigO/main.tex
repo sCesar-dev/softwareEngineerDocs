@@ -11,8 +11,9 @@
 \usepackage{booktabs}
 \usepackage{hyperref}
 \usepackage{listings}
+\usepackage{float}
 
-\geometry{left=2.5cm, right=2.5cm, top=3cm, bottom=3cm}
+\geometry{left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm}
 
 % --- Configuração para exibição de código Python ---
 \definecolor{codegreen}{rgb}{0,0.6,0}
@@ -43,9 +44,10 @@
 % --- Identificação da Equipe ---
 \title{\textbf{Relatório Técnico - Crédito 2}\\ \Large{Implementação do FCM e Obtenção Empírica da Função Tempo}}
 \author{
-    \textbf{Equipe XX} - [Nome da sua Restrição Arquitetural] \\
-    Membro 1: [Nome Completo e Matrícula] \\
-    Membro 2: [Nome Completo e Matrícula] \\
+    \textbf{Equipe 8} - Memory Flattening (Achatamento de Memória 1D) \\
+    Membro 1: Samuel Cesar \\
+    Membro 2: Pedro Henrique \\
+    Membro 3: Pedro Lucas \\
     \textit{Universidade do Estado da Bahia (UNEB) - DCET I}
 }
 \date{\today}
@@ -58,87 +60,214 @@
 Este documento apresenta os resultados do Crédito 2 da disciplina de Engenharia de Programas. O objetivo é descrever a implementação desenvolvida \textit{from scratch} do algoritmo \textbf{Fuzzy C-Means (FCM)}, respeitando rigorosamente a restrição arquitetural sorteada pela equipe, e apresentar o levantamento do Tempo Empírico ($T_{exp}$) em função do número de pixels ($n$) e clusters ($K$).
 
 \section{Análise da Restrição Arquitetural}
-\textbf{Restrição Sorteada:} [INSERIR NOME DA RESTRIÇÃO, ex: Missão "Fuga da FPU" (Fixed-Point Math)]
 
-% INSTRUÇÃO AOS ALUNOS:
-% Expliquem detalhadamente COMO vocês lidaram com a restrição arquitetural no código. 
-% Quais foram os desafios técnicos de hardware impostos por ela?
-% Como converteram a lógica nativa do FCM para obedecer à regra? 
-% Exemplo: Se for Fixed-Point, expliquem a escala usada e os bitwise shifts aplicados. 
-% Se for Loop Unrolling, expliquem como desenrolaram e lidaram com o "resto" da divisão do laço.
-[Escreva aqui a fundamentação teórica de como a restrição foi superada do ponto de vista de Engenharia de Software e Microarquitetura...]
+\textbf{Restrição Sorteada:} Linearização da Matriz de Pertinência $U$ em 1D" (Memory Flattening) \\
+
+Seguindo às diretrizes da \textbf{Ação Cirúrgica} e \textbf{Preservação de Escopo} do código base (\texttt{FCM\_PURO\_v3.py}), a intervenção arquitetural restringiu-se exclusivamente à matriz de pertinência $U$ (e sua matriz auxiliar de atualização $U_{nova}$), mantendo intactas as estruturas da lista de pixels $X$ (alvo da Missão 3 -- \textit{SoA}) e da matriz de centroides $C$.
+
+No código \textit{Baseline}, a matriz $U$ é construída como uma lista bidimensional (lista de listas $N \times K$), acessada por dupla indexação \texttt{U[i][j]} e populada dinamicamente a cada iteração por chamadas sucessivas a \texttt{U\_nova.append(linha\_nova)}. Na versão adaptada à missão:
+\begin{enumerate}
+    \item \textbf{Eliminação de Abstração 2D e Alocação Contígua:} A estrutura \texttt{U[i][j]} foi destruída e substituída por um único vetor unidimensional pré-alocado de tamanho $N \times K$ (\texttt{U = [0.0] * (N * K)} e \texttt{U\_nova = [0.0] * (N * K)}), eliminando as $N$ alocações dinâmicas de sublistas e chamadas ao método \texttt{.append()} a cada iteração do laço principal.
+    \item \textbf{Custo de Endereçamento na ULA:} Para mapear as coordenadas lógicas $(i, j)$ no vetor linearizado 1D, cada acesso à matriz de pertinência passou a utilizar a equação de deslocamento de linha (\textit{row-major order}):
+    \begin{equation*}
+        \text{índice}_{1D} = (i \times K) + j
+    \end{equation*}
+    Do ponto de vista microarquitetural, essa mudança estabelece um \textit{trade-off} claro no interpretador Python: reduz-se a sobrecarga do coletor de lixo/alocador de memória (\textit{Heap}) e a dupla desreferenciação de ponteiros (\texttt{PyObject*}), mas injeta-se um par de instruções aritméticas (uma multiplicação e uma adição inteira na ULA) em todas as leituras e escritas de pertinência dentro dos laços aninhados $\mathcal{O}(nK)$.
+\end{enumerate}
 
 \section{Implementação do Núcleo FCM}
 O código fonte completo, contendo os scripts de validação e a implementação integral, encontra-se versionado no seguinte repositório público: \\
-\textbf{Link do Repositório:} \href{https://github.com/sua-equipe/projeto-foca}{[INSERIR URL DO GITHUB AQUI]}
+\textbf{Link do Repositório:} \href{https://github.com/sCesar-dev/softwareEngineerDocs/blob/main/docs/trabalho03/Relat%C3%B3rio_C2_BigO/relatorio_fcm_missao01.ipynb}{[INSERIR URL DO GITHUB AQUI]} \\
 
-Abaixo, destaca-se o \textit{snippet} do laço principal do algoritmo, onde a restrição arquitetural atua sobre as primitivas de processamento e acesso à memória na fase de associação (cálculo das distâncias e atualização da matriz de pertinência).
+Abaixo, destaca-se o \textit{snippet} do laço principal do algoritmo (Fases 2, 3 e 4), evidenciando a atuação cirúrgica da restrição arquitetural sobre os vetores linearizados \texttt{U} e \texttt{U\_nova}, enquanto \texttt{X[i][c]} e \texttt{C[j][c]} preservam o escopo original:
 
-% INSTRUÇÃO AOS ALUNOS:
-% Colem abaixo APENAS o coração computacional do algoritmo (os laços for iterativos e o cálculo interno de pertinência/distância).
-\begin{lstlisting}[language=Python, caption=Núcleo computacional do FCM adaptado à restrição.]
-# [INSERIR O CÓDIGO FONTE AQUI]
-# Exemplo genérico estrutural:
+\begin{lstlisting}[language=Python, caption=Núcleo computacional do FCM com linearização cirúrgica da matriz de pertinência $U$ (1D).]
+# FASE 2: ATUALIZACAO DOS CENTROIDES (X e C preservados; U lido em 1D)
+C = []
+for j in range(K):
+    numerador = [0.0] * canais
+    denominador = 0.0
+    
+    for i in range(N):
+        u_m = U[(i * K) + j] ** m
+        denominador += u_m
+        for c in range(canais):
+            numerador[c] += u_m * X[i][c]
+            
+    centroide_j = []
+    for c in range(canais):
+        if denominador == 0.0:
+            centroide_j.append(0.0)
+        else:
+            centroide_j.append(numerador[c] / denominador)
+    C.append(centroide_j)
+
+# FASE 3 E 4: ASSOCIACAO E CONVERGENCIA (U_nova pre-alocado em 1D)
+U_nova = [0.0] * (N * K)
+max_diff = 0.0
+
 for i in range(N):
+    distancias = [0.0] * K
+    
+    # 1. Calculo das distancias euclidianas (escopo original preservado)
     for j in range(K):
-        # Implementação autoral da equipe respeitando a restrição
-        pass 
+        soma_quadrados = 0.0
+        for c in range(canais):
+            diff = X[i][c] - C[j][c]
+            soma_quadrados += diff * diff
+        distancias[j] = soma_quadrados ** 0.5
+        
+    # 2. Atualizacao das pertinencias no vetor linearizado U_nova (1D)
+    for j in range(K):
+        if distancias[j] == 0.0:
+            U_nova[(i * K) + j] = 1.0
+            for k in range(K):
+                if k != j:
+                    U_nova[(i * K) + k] = 0.0
+            break
+            
+        soma_dist = 0.0
+        for k in range(K):
+            d_k = distancias[k] if distancias[k] > 0.0 else 1e-10
+            razao = distancias[j] / d_k
+            soma_dist += razao ** (2.0 / (m - 1.0))
+            
+        pertinencia = 1.0 / soma_dist if soma_dist > 0.0 else (1.0 / K)
+        U_nova[(i * K) + j] = pertinencia
+        
+        diff_u = pertinencia - U[(i * K) + j]
+        if diff_u < 0:
+            diff_u = -diff_u
+        if diff_u > max_diff:
+            max_diff = diff_u
+
+U = U_nova
 \end{lstlisting}
 
 \section{Metodologia Experimental e Estabilidade}
-As medições empíricas foram executadas utilizando o script \texttt{experimentador.py}. Para atestar a confiabilidade do hardware e minimizar os ruídos do Sistema Operacional, foram realizadas $R = 30$ repetições para cada combinação de $(n, K)$. 
+As medições empíricas foram executadas utilizando o script \texttt{experimentador.py}. Para atestar a confiabilidade do hardware e minimizar os ruídos do Sistema Operacional, foram realizadas $R = 30$ repetições para cada combinação de $(n, K)$. \\
 
-A Tabela \ref{tab:estabilidade} comprova o rigor estatístico da bancada, garantindo que o Coeficiente de Variação (CV) permaneceu dentro da zona de aceitação ($CV < 0.15$).
+As Tabelas \ref{tab:estabilidade_base} e \ref{tab:estabilidade_missao} apresentam os resultados de estabilidade estatística para o \textbf{Código Base Original} e para o \textbf{Código com Missão}, respectivamente, comprovando que o Coeficiente de Variação permaneceu estritamente dentro do limite exigido ($CV \le 0,15$) em $100\%$ dos cenários.
 
-% INSTRUÇÃO AOS ALUNOS:
-% Preencham a tabela abaixo resumindo as saídas do Pandas DataFrame gerado pelo seu script.
-\begin{table}[h!]
+\begin{table}[H]
 \centering
-\caption{Validação de Estabilidade Empírica (Amostra Resumida)}
-\label{tab:estabilidade}
-\begin{tabular}{@{}ccccc@{}}
+\caption{Validação de Estabilidade Empírica -- Código Base Original (\textit{Baseline})}
+\label{tab:estabilidade_base}
+\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}cccccc@{}}
 \toprule
-\textbf{Tamanho da Imagem ($n$)} & \textbf{Clusters ($K$)} & \textbf{Tempo Médio ($s$)} & \textbf{Desvio Padrão} & \textbf{CV} \\ \midrule
-$100 \times 100$ (10000) & 2 & [0.000] & [0.000] & [< 0.15] \\
-$100 \times 100$ (10000) & 3 & [0.000] & [0.000] & [< 0.15] \\
-... & ... & ... & ... & ... \\
-$500 \times 500$ (250000) & 4 & [0.000] & [0.000] & [< 0.15] \\ \bottomrule
+\textbf{Tamanho ($n$)} & \textbf{Clusters ($K$)} & \textbf{Tempo Médio ($s$)} & \textbf{Desvio Padrão ($s$)} & \textbf{CV} & \textbf{Estável} \\ \midrule
+$96 \times 96$ (9216)    & 2 & 0,314807  & 0,029983 & 0,095242 & True \\
+$96 \times 96$ (9216)    & 3 & 0,671115  & 0,085658 & 0,127636 & True \\
+$96 \times 96$ (9216)    & 4 & 1,685736  & 0,098329 & 0,058330 & True \\
+$128 \times 128$ (16384) & 2 & 0,606489  & 0,051804 & 0,085416 & True \\
+$128 \times 128$ (16384) & 3 & 1,261480  & 0,163266 & 0,129424 & True \\
+$128 \times 128$ (16384) & 4 & 2,927077  & 0,132757 & 0,045355 & True \\
+$192 \times 192$ (36864) & 2 & 1,424078  & 0,081041 & 0,056907 & True \\
+$192 \times 192$ (36864) & 3 & 2,882762  & 0,358969 & 0,124523 & True \\
+$192 \times 192$ (36864) & 4 & 7,054528  & 0,333161 & 0,047227 & True \\
+$256 \times 256$ (65536) & 2 & 2,739153  & 0,254677 & 0,092976 & True \\
+$256 \times 256$ (65536) & 3 & 5,304163  & 0,563521 & 0,106241 & True \\
+$256 \times 256$ (65536) & 4 & 11,309664 & 0,469214 & 0,041488 & True \\ \bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Validação de Estabilidade Empírica -- Código com Missão (\textit{Memory Flattening})}
+\label{tab:estabilidade_missao}
+\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}cccccc@{}}
+\toprule
+\textbf{Tamanho ($n$)} & \textbf{Clusters ($K$)} & \textbf{Tempo Médio ($s$)} & \textbf{Desvio Padrão ($s$)} & \textbf{CV} & \textbf{Estável} \\ \midrule
+$96 \times 96$ (9216)    & 2 & 0,268037 & 0,030463 & 0,113651 & True \\
+$96 \times 96$ (9216)    & 3 & 0,558621 & 0,049919 & 0,089360 & True \\
+$96 \times 96$ (9216)    & 4 & 1,406037 & 0,076048 & 0,054087 & True \\
+$128 \times 128$ (16384) & 2 & 0,482780 & 0,029978 & 0,062094 & True \\
+$128 \times 128$ (16384) & 3 & 1,059462 & 0,134651 & 0,127094 & True \\
+$128 \times 128$ (16384) & 4 & 2,402420 & 0,116815 & 0,048624 & True \\
+$192 \times 192$ (36864) & 2 & 1,176336 & 0,079522 & 0,067602 & True \\
+$192 \times 192$ (36864) & 3 & 2,332859 & 0,305430 & 0,130925 & True \\
+$192 \times 192$ (36864) & 4 & 6,110800 & 0,230413 & 0,037706 & True \\
+$256 \times 256$ (65536) & 2 & 1,935111 & 0,111146 & 0,057437 & True \\
+$256 \times 256$ (65536) & 3 & 4,082775 & 0,335856 & 0,082262 & True \\
+$256 \times 256$ (65536) & 4 & 9,868953 & 0,464275 & 0,047044 & True \\ \bottomrule
 \end{tabular}
 \end{table}
 
 \section{Resultados Empíricos ($T_{exp}$)}
 
-A partir da filtragem de estabilidade, o algoritmo de \textit{curve fitting} calibrou a função empírica do sistema. A equação polinomial identificada pela bancada real de testes foi:
+A partir dos dados validados ($CV < 0,15$), o algoritmo de regressão não-linear (\texttt{scipy.optimize.curve\_fit}) ajustou a superfície polinomial de complexidade $T_{exp}(n, K) = \alpha \cdot nK + \beta \cdot n + \gamma \cdot K + \delta$.
 
-% INSTRUÇÃO AOS ALUNOS:
-% Colem aqui a equação gerada no terminal pela função exibir_equacao_ajustada().
+\subsection{Função Tempo e Gráficos -- Código Base Original (\textit{Baseline})}
+A equação polinomial calibrada para o código \textit{Baseline} (Tabela \ref{tab:estabilidade_base}), com coeficiente de determinação $R^2 = 0,9682$ ($96,82\%$), foi:
+
 \begin{equation}
-    T_{exp}(n, K) = (\alpha) \cdot nK + (\beta) \cdot n + (\gamma) \cdot K + (\delta)
+    T_{exp\_base}(n, K) = (6,4703 \times 10^{-5}) \cdot nK + (-9,4956 \times 10^{-5}) \cdot n + (1,6606 \times 10^{-1}) \cdot K + (-4,8932 \times 10^{-1})
+    \label{eq:texp_base}
 \end{equation}
 
-Para validação visual, as Figuras \ref{fig:2d} e \ref{fig:3d} apresentam, respectivamente, os cortes bidimensionais e a superfície de resposta tridimensional projetada sobre as aferições reais (pontos de amostragem).
+As Figuras \ref{fig:2d_base} e \ref{fig:3d_base} exibem as curvas bidimensionais e a superfície 3D obtidas para o código original.
 
-% INSTRUÇÃO AOS ALUNOS:
-% Certifiquem-se de que a imagem 'relatorio_complexidade.png' está na mesma pasta do arquivo .tex principal.
-\begin{figure}[h!]
+\begin{figure}[H]
     \centering
-    % \includegraphics[width=1\textwidth]{relatorio_complexidade.png}
-    \vspace{4cm} % Remover esta linha e descomentar a linha de cima ao inserir a imagem real
-    \caption{Tempo empírico segmentado: $T \times n$ (esquerda) e $T \times K$ (direita).}
-    \label{fig:2d}
+    \includegraphics[width=1.0\textwidth]{relatorio_complexidade.png}
+    \caption{Código Base Original: Tempo empírico segmentado $T \times n$ (esquerda) e $T \times K$ (direita).}
+    \label{fig:2d_base}
 \end{figure}
 
-% INSTRUÇÃO AOS ALUNOS:
-% Certifiquem-se de que a imagem 'superficie_3d_foca.png' está na mesma pasta.
-\begin{figure}[h!]
+\begin{figure}[H]
     \centering
-    % \includegraphics[width=0.8\textwidth]{superficie_3d_foca.png}
-    \vspace{5cm} % Remover esta linha e descomentar a linha de cima ao inserir a imagem real
-    \caption{Superfície de Tempo 3D sobreposta aos pontos de calibração empírica.}
-    \label{fig:3d}
+    \includegraphics[width=0.78\textwidth]{superficie_3d_foca.png}
+    \caption{Código Base Original: Superfície de Tempo 3D sobreposta aos pontos de calibração empírica.}
+    \label{fig:3d_base}
 \end{figure}
+
+\subsection{Função Tempo e Gráficos -- Código com Missão (\textit{Memory Flattening})}
+A equação polinomial calibrada para o código adaptado com a \textbf{Missão 1} (Tabela \ref{tab:estabilidade_missao}), com coeficiente de determinação $R^2 = 0,9578$ ($95,78\%$), foi:
+
+\begin{equation}
+    T_{exp\_missao}(n, K) = (6,1258 \times 10^{-5}) \cdot nK + (-1,0231 \times 10^{-4}) \cdot n + (3,0475 \times 10^{-2}) \cdot K + (-5,7918 \times 10^{-2})
+    \label{eq:texp_missao}
+\end{equation}
+
+As Figuras \ref{fig:2d_missao} e \ref{fig:3d_missao} exibem os cortes bidimensionais e a superfície tridimensional para o código com achatamento de memória 1D.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{relatorio_complexidade_ajustado.png}
+    \caption{Código com Missão (1D): Tempo empírico segmentado $T \times n$ (esquerda) e $T \times K$ (direita).}
+    \label{fig:2d_missao}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.78\textwidth]{superficie_3d_foca_ajustado.png}
+    \caption{Código com Missão (1D): Superfície de Tempo 3D sobreposta aos pontos de calibração empírica.}
+    \label{fig:3d_missao}
+\end{figure}
+
+\subsection{Justificativa Analítica sobre o Sinal do Coeficiente $\beta$}
+Cumpre destacar que todas as medições utilizadas no ajuste apresentaram alta estabilidade estatística ($CV < 0,15$). A ocorrência de valor negativo no coeficiente linear secundário $\beta$ não decorre de ruído experimental, mas sim da dinâmica intrínseca do algoritmo FCM:
+\begin{itemize}
+    \item O critério de parada (\texttt{max\_diff < epsilon}) faz com que o número médio de iterações até a convergência cresça com $K$: em média $\approx 10,5$ iterações para $K=2$, $\approx 15,8$ iterações para $K=3$ e $\approx 26,9$ iterações para $K=4$;
+    \item Adicionalmente, o cálculo da atualização de pertinência na Fase 3 possui laços aninhados em $j$ e $k$ de ordem $\mathcal{O}(nK^2)$ por iteração.
+\end{itemize}
+Como resultado, o tempo empírico cresce de forma superlinear em relação a $K$ (mais que quadruplicando quando $K$ dobra de $2$ para $4$). Ao projetar o modelo bilinear $T(n,K) = \alpha nK + \beta n + \gamma K + \delta$ por mínimos quadrados, a elevada inclinação em $\alpha nK$ exige matematicamente um termo corretivo $\beta < 0$ para ajustar os tempos inferiores observados em $K=2$.
+
+\section{Análise Comparativa e Interpretação (Baseline vs. Missão)}
+
+\textbf{Comparação Quantitativa (\%):} O confronto entre as Tabelas \ref{tab:estabilidade_base} e \ref{tab:estabilidade_missao} mostra que a linearização 1D de $U$ reduziu o tempo de execução em todos os cenários, com ganhos entre $-12,74\%$ ($n=65536, K=4$, caindo de $11,31\text{ s}$ para $9,87\text{ s}$) e $-29,35\%$ ($n=65536, K=2$, de $2,74\text{ s}$ para $1,94\text{ s}$). Na função calibrada, o coeficiente dominante $\alpha$ caiu $-5,32\%$ ($6,4703 \times 10^{-5} \to 6,1258 \times 10^{-5}$), o termo $\gamma$ reduziu $-81,65\%$ e o \textit{overhead} $|\delta|$ caiu $-88,16\%$, mantendo $R^2$ elevado ($96,82\%$ vs. $95,78\%$). \\
+
+\textbf{Interpretação Qualitativa:} Ambas as versões preservam a ordem assintótica $\mathcal{O}(nK)$, mas o desempenho reflete dois efeitos microarquiteturais opostos no Python:
+\begin{enumerate}
+    \item \textbf{Ganho por Alocação Contígua e Localidade:} O código 1D substitui $N$ alocações dinâmicas por iteração (\texttt{linha\_nova} e \texttt{.append()}) e a dupla indireção de ponteiros \texttt{U[i][j]} na \textit{Heap} por um único vetor contíguo \texttt{[0.0] * (N * K)}, melhorando o uso de cache L1/L2 (ganho de até $29,35\%$ em $K=2$).
+    \item \textbf{Custo Aritmético na ULA em $K$ Maior:} Cada acesso \texttt{U[(i * K) + j]} injeta uma multiplicação e uma soma inteira na ULA. Como em $K=4$ o algoritmo exige mais iterações ($\approx 27$ vs. $\approx 10$ em $K=2$), o custo acumulado dessa indexação atenua o ganho percentual relativo de $29,35\%$ ($K=2$) para $12,74\%$ ($K=4$).
+\end{enumerate}
 
 \section{Conclusão Parcial}
-Os dados atestam que a implementação adaptada do algoritmo FCM possui complexidade de ordem $\mathcal{O}(nK)$, com os gargalos microarquiteturais refletidos primariamente no coeficiente dominante $\alpha$ da medição. Este modelo empírico servirá como base absoluta (\textit{ground truth}) para o confronto teórico exigido no Crédito 3 utilizando a contagem F.O.C.A.
+Os resultados experimentais atestam que tanto a versão \textit{Baseline} quanto a implementação adaptada à Missão 1 (\textit{Memory Flattening}) obedecem à complexidade assintótica de ordem $\mathcal{O}(nK)$, com excelente aderência estatística ($CV < 0,15$ e $R^2 > 0,92$). A comparação qualitativa e quantitativa demonstra que a linearização 1D da matriz de pertinência $U$ elimina a sobrecarga de alocação de sublistas e melhora a localidade de memória, mas introduz operações aritméticas extras de indexação \texttt{(i * K) + j} na ULA, cujo impacto reflete-se diretamente no coeficiente dominante $\alpha$. Este modelo empírico servirá como base absoluta (\textit{ground truth}) para o confronto teórico exigido no Crédito 3 utilizando a contagem F.O.C.A.
 
 \end{document}
